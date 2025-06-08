@@ -1,8 +1,4 @@
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_TEMPERATURE } from '@/utils/app/const';
-import { OllamaError, OllamaStream } from '@/utils/server';
-
-import { ChatBody, Message } from '@/types/chat';
-
+import { ChatBody } from '@/types/chat';
 
 export const config = {
   runtime: 'edge',
@@ -10,49 +6,44 @@ export const config = {
 
 const handler = async (req: Request): Promise<Response> => {
   try {
-    const { model, system, options, prompt } = (await req.json()) as ChatBody;
+    const { prompt } = (await req.json()) as ChatBody;
 
-
-    let promptToSend = system;
-    if (!promptToSend) {
-      promptToSend = DEFAULT_SYSTEM_PROMPT;
+    if (!prompt) {
+      return new Response(JSON.stringify({ error: 'Prompt eksik.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    let temperatureToUse = options?.temperature;
-    if (temperatureToUse == null) {
-      temperatureToUse = DEFAULT_TEMPERATURE;
-    }
+    const brainRes = await fetch(process.env.BRAIN_API_URL || '', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt }),
+    });
 
-    const stream = await OllamaStream (model, promptToSend, temperatureToUse, prompt);
+    const data = await brainRes.json();
 
-    return new Response(stream);
+    return new Response(
+      JSON.stringify({ response: data.response ?? 'Yanıt yok.' }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   } catch (error) {
-    console.error('Chat API error:', error);
-    if (error instanceof OllamaError) {
-      // Return a more descriptive error message to help with debugging
-      return new Response(JSON.stringify({ 
-        error: 'Ollama Error', 
-        message: error.message,
-        suggestion: error.message.includes('OLLAMA_HOST') ? 
-          'Try removing the OLLAMA_HOST environment variable or setting it to http://127.0.0.1:11434' : 
-          'Check if Ollama is running and accessible'
-      }), { 
-        status: 500, 
-        headers: {
-          'Content-Type': 'application/json'
-        } 
-      });
-    } else {
-      return new Response(JSON.stringify({ 
-        error: 'Internal Server Error', 
-        message: error instanceof Error ? error.message : 'Unknown error'
-      }), { 
+    console.error('brAIn API hatası:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Sunucu hatası',
+        message: error instanceof Error ? error.message : 'Bilinmeyen hata',
+      }),
+      {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json'
-        } 
-      });
-    }
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
   }
 };
 
